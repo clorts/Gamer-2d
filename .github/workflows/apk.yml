@@ -1,0 +1,56 @@
+name: Gerar APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Preparar pasta do jogo
+        run: |
+          set -e
+          if [ -f index.html ]; then
+            SRC="$PWD"
+          else
+            ZIP=$(ls *.zip | head -n 1)
+            mkdir -p /tmp/jogo
+            unzip -q "$ZIP" -d /tmp/jogo
+            SRC=$(dirname "$(find /tmp/jogo -name index.html | head -n 1)")
+          fi
+          mkdir -p www
+          cp "$SRC/index.html" "$SRC/game.js" www/
+          cp -r "$SRC/assets" www/assets
+
+      - name: Criar projeto Android
+        run: |
+          npm init -y
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          npx cap init "Magos e Arqueiros" com.vitor.magosarqueiros --web-dir=www
+          npx cap add android
+          npx cap sync android
+          sed -i 's/<activity/<activity android:screenOrientation="sensorLandscape"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Gerar APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magos-e-arqueiros-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
